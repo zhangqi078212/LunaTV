@@ -1,79 +1,74 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps, no-console, @next/next/no-img-element */
+/* eslint-disable react-hooks/exhaustive-deps, no-console */
 
 /// <reference types="@webgpu/types" />
 
 'use client';
 
+import Hls from 'hls.js';
+import { X } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import Hls from 'hls.js';
-import { Heart, ChevronUp, Download, X } from 'lucide-react';
-import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 
-import { useDownload } from '@/contexts/DownloadContext';
-import { normalizeDownloadSource } from '@/lib/download';
-import { useDanmu } from '@/hooks/useDanmu';
-import type { DanmuManualOverride } from '@/hooks/useDanmu';
-import DownloadEpisodeSelector from '@/components/download/DownloadEpisodeSelector';
-import DanmuManualMatchModal, { type DanmuManualSelection } from '@/components/DanmuManualMatchModal';
-import EpisodeSelector from '@/components/EpisodeSelector';
-import NetDiskSearchResults from '@/components/NetDiskSearchResults';
-import AcgSearch from '@/components/AcgSearch';
-import PageLayout from '@/components/PageLayout';
-import SkipController, { SkipSettingsButton } from '@/components/SkipController';
-import VideoCard from '@/components/VideoCard';
-import CommentSection from '@/components/play/CommentSection';
-import DownloadButtons from '@/components/play/DownloadButtons';
-import FavoriteButton from '@/components/play/FavoriteButton';
-import NetDiskButton from '@/components/play/NetDiskButton';
-import CollapseButton from '@/components/play/CollapseButton';
-import BackToTopButton from '@/components/play/BackToTopButton';
-import LoadingScreen from '@/components/play/LoadingScreen';
-import PlayInfoPanel from '@/components/play/PlayInfoPanel';
-import VideoLoadingOverlay from '@/components/play/VideoLoadingOverlay';
-import WatchRoomSyncBanner from '@/components/play/WatchRoomSyncBanner';
-import SourceSwitchDialog from '@/components/play/SourceSwitchDialog';
-import OwnerChangeDialog from '@/components/play/OwnerChangeDialog';
-import VideoCoverDisplay from '@/components/play/VideoCoverDisplay';
-import PlayErrorDisplay from '@/components/play/PlayErrorDisplay';
-import DanmuSettingsPanel from '@/components/play/DanmuSettingsPanel';
-import WebSRSettingsPanel from '@/components/play/WebSRSettingsPanel';
-import { SeekButtonsSettingsPanel } from '@/components/play/SeekButtonsSettingsPanel';
-import artplayerPluginChromecast from '@/lib/artplayer-plugin-chromecast';
 import artplayerPluginAutoThumbnail from '@/lib/artplayer-plugin-auto-thumbnail';
+import artplayerPluginChromecast from '@/lib/artplayer-plugin-chromecast';
 import artplayerPluginLiquidGlass from '@/lib/artplayer-plugin-liquid-glass';
 import artplayerPluginSeekButtons from '@/lib/artplayer-plugin-seek-buttons';
 import { ClientCache } from '@/lib/client-cache';
 import {
-  deleteFavorite,
   deletePlayRecord,
   generateStorageKey,
   getAllFavorites,
   getAllPlayRecords,
-  isFavorited,
-  saveFavorite,
-  savePlayRecord,
   subscribeToDataUpdates,
 } from '@/lib/db.client';
-import { getDoubanDetails, getDoubanComments, getDoubanActorMovies } from '@/lib/douban.client';
+import { normalizeDownloadSource } from '@/lib/download';
+import OptimizedHlsLoader from '@/lib/hls-loader';
 import { SearchResult } from '@/lib/types';
-import { applyFirstPartyM3u8Proxy, applyVideoPlayProxy, getVideoResolutionFromM3u8, isFirstPartyM3u8Proxy, processImageUrl, stripVideoPlayProxy, VideoSourceTestResult } from '@/lib/utils';
+import { applyFirstPartyM3u8Proxy, applyVideoPlayProxy, getArtPlayerType, getVideoResolutionFromM3u8, isFirstPartyM3u8Proxy, stripVideoPlayProxy, VideoSourceTestResult } from '@/lib/utils';
+import type { DanmuManualOverride } from '@/hooks/useDanmu';
+import { useDanmu } from '@/hooks/useDanmu';
+
+import AcgSearch from '@/components/AcgSearch';
+import DanmuManualMatchModal, { type DanmuManualSelection } from '@/components/DanmuManualMatchModal';
+import DownloadEpisodeSelector from '@/components/download/DownloadEpisodeSelector';
+import EpisodeSelector from '@/components/EpisodeSelector';
+import NetDiskSearchResults from '@/components/NetDiskSearchResults';
+import PageLayout from '@/components/PageLayout';
+import BackToTopButton from '@/components/play/BackToTopButton';
+import CollapseButton from '@/components/play/CollapseButton';
+import DanmuSettingsPanel from '@/components/play/DanmuSettingsPanel';
+import DownloadButtons from '@/components/play/DownloadButtons';
+import LoadingScreen from '@/components/play/LoadingScreen';
+import NetDiskButton from '@/components/play/NetDiskButton';
+import OwnerChangeDialog from '@/components/play/OwnerChangeDialog';
+import PlayErrorDisplay from '@/components/play/PlayErrorDisplay';
+import PlayInfoPanel from '@/components/play/PlayInfoPanel';
+import { SeekButtonsSettingsPanel } from '@/components/play/SeekButtonsSettingsPanel';
+import SourceSwitchDialog from '@/components/play/SourceSwitchDialog';
+import VideoLoadingOverlay from '@/components/play/VideoLoadingOverlay';
+import WatchRoomSyncBanner from '@/components/play/WatchRoomSyncBanner';
+import WebSRSettingsPanel from '@/components/play/WebSRSettingsPanel';
+import SkipController, { SkipSettingsButton } from '@/components/SkipController';
 import { useWatchRoomContextSafe } from '@/components/WatchRoomProvider';
-import { useWatchRoomSync } from './hooks/useWatchRoomSync';
+
+import { useDownload } from '@/contexts/DownloadContext';
+
 import {
-  useSavePlayRecordMutation,
-  useSaveFavoriteMutation,
   useDeleteFavoriteMutation,
+  useSaveFavoriteMutation,
+  useSavePlayRecordMutation,
 } from './hooks/usePlayPageMutations';
 import {
-  useDoubanDetailsQuery,
-  useDoubanCommentsQuery,
-} from './hooks/usePlayPageQueries';
-import {
-  usePrefetchNextEpisode,
   usePrefetchDoubanData,
+  usePrefetchNextEpisode,
 } from './hooks/usePlayPagePrefetch';
+import {
+  useDoubanCommentsQuery,
+  useDoubanDetailsQuery,
+} from './hooks/usePlayPageQueries';
+import { useWatchRoomSync } from './hooks/useWatchRoomSync';
 
 // 播放速率持久化
 const PLAYER_PLAYBACK_RATE_KEY = 'moontv_player_playback_rate';
@@ -2701,7 +2696,7 @@ function PlayPageClient() {
           .replace(/(const|let|var)\s+(\w+)\s*:\s*(string|number|boolean|any|void|never|unknown|object)\s*=/g, '$1 $2 =');
 
         // 创建并执行自定义函数
-        // eslint-disable-next-line no-new-func
+         
         const customFunction = new Function('type', 'm3u8Content',
           jsCode + '\nreturn filterAdsFromM3U8(type, m3u8Content);'
         );
@@ -2786,36 +2781,6 @@ function PlayPageClient() {
         .padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
     }
   };
-
-  class CustomHlsJsLoader extends Hls.DefaultConfig.loader {
-    constructor(config: any) {
-      super(config);
-      const load = this.load.bind(this);
-      this.load = function (context: any, config: any, callbacks: any) {
-        // 拦截manifest和level请求
-        if (
-          (context as any).type === 'manifest' ||
-          (context as any).type === 'level'
-        ) {
-          const onSuccess = callbacks.onSuccess;
-          callbacks.onSuccess = function (
-            response: any,
-            stats: any,
-            context: any
-          ) {
-            // 如果是m3u8文件，处理内容以移除广告分段
-            if (response.data && typeof response.data === 'string') {
-              // 过滤掉广告段 - 实现更精确的广告过滤逻辑
-              response.data = filterAdsFromM3U8(response.data);
-            }
-            return onSuccess(response, stats, context, null);
-          };
-        }
-        // 执行原始load方法
-        load(context, config, callbacks);
-      };
-    }
-  }
 
 
   // 🚀 优化的集数变化处理（防抖 + 状态保护）
@@ -4247,6 +4212,8 @@ function PlayPageClient() {
 
         // ☁️ 新地址切换，重置 Worker 代理降级标记（非 m3u8 路径用）
         artPlayerRef.current._proxyFallbackDone = false;
+        // 切换的新地址可能是 m3u8 代理地址，也可能是普通格式，每次都要重新指定 type
+        artPlayerRef.current.option.type = getArtPlayerType(videoUrl);
 
         let switchPromise: Promise<any>;
         if (isEpisodeChange) {
@@ -4393,6 +4360,8 @@ function PlayPageClient() {
       artPlayerRef.current = new Artplayer({
         container: artRef.current,
         url: videoUrl,
+        // 代理地址的扩展名无法被 ArtPlayer 识别为 m3u8，必须显式指定
+        type: getArtPlayerType(videoUrl),
         poster: videoCover,
         volume: 0.7,
         isLive: false,
@@ -4454,7 +4423,12 @@ function PlayPageClient() {
             // 🚀 根据 HLS.js 官方源码的最佳实践配置
             const hls = new Hls({
               debug: false,
-              enableWorker: true,
+              // iOS Safari 已知 Web Worker + URL.createObjectURL(blob) 存在兼容问题
+              // 参考：https://github.com/video-dev/hls.js/issues/2064
+              enableWorker: !isIOSGlobal,
+              // iOS 17.1+ 优先使用 ManagedMediaSource 以获得更稳定的 MSE 体验
+              // 参考：https://developer.mozilla.org/en-US/docs/Web/API/ManagedMediaSource
+              preferManagedMediaSource: true,
               // 关闭低延迟模式以改善点播体验 - Issue #194
               // HLS.js 默认 lowLatencyMode: true，主要为 LL-HLS 直播流设计
               // 点播场景下会导致：缓冲区过小、网络波动时容易卡顿、CPU 负担增加
@@ -4516,9 +4490,20 @@ function PlayPageClient() {
                 },
               },
 
-              /* 自定义loader */
+              /* HLS Loader：广告过滤（基于 hls.js 顺序加载设计） */
               loader: blockAdEnabledRef.current
-                ? CustomHlsJsLoader
+                ? class extends OptimizedHlsLoader {
+                    constructor(config: any) {
+                      super({
+                        ...config,
+                        filterAds: true,
+                        enableDirectConnect: false,
+                        sourceKey: '',
+                        customAdFilterCode: customAdFilterCodeRef.current,
+                        currentSource: currentSourceRef.current,
+                      });
+                    }
+                  }
                 : Hls.DefaultConfig.loader,
             });
 
@@ -5977,13 +5962,15 @@ function PlayPageClient() {
           return;
         }
 
-        // ☁️ 非 m3u8 格式（走原生 <video src>）Worker 代理失败时，自动降级为直连原始地址
-        // m3u8 格式的降级在 customType.m3u8 的 Hls.Events.ERROR 处理里完成，此处跳过避免重复
-        if (!artPlayerRef.current._proxyFallbackDone) {
+        // ☁️ Worker 代理播放失败时，自动降级为直连原始地址
+        // hls.js 已接管时（video.hls 存在），降级在 customType.m3u8 的 Hls.Events.ERROR 里完成，此处跳过避免重复；
+        // 但 hls.js 没启动（如 type 未识别）时没有任何人会降级，必须在这里兜底
+        if (!artPlayerRef.current._proxyFallbackDone && !artPlayerRef.current.video?.hls) {
           const rawUrl = stripVideoPlayProxy(videoUrl);
-          if (rawUrl && !/\.m3u8(\?|#|$)/i.test(videoUrl)) {
+          if (rawUrl) {
             console.warn('Worker 代理播放错误，降级为直连:', rawUrl);
             artPlayerRef.current._proxyFallbackDone = true;
+            artPlayerRef.current.option.type = getArtPlayerType(rawUrl);
             artPlayerRef.current.switchUrl(rawUrl);
           }
         }
